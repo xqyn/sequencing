@@ -19,6 +19,7 @@ class fastq(NamedTuple):
     qual: str   # quality
 
 
+# --------------------------------------------------
 def fastq_seq(fastq_filename):
     """
     Read a fastq file and return a list of fastq objects.
@@ -42,10 +43,11 @@ def fastq_seq(fastq_filename):
     return fastq_list
 
 
+
 def seq_len(fastq_list):
     """
-    Giving a fastq_list containing fastq.seq, 
-    return the lengths of the sequences.
+    Giving a fastq_list containing fastq.seq
+    return the lengths of the sequences
     """
     
     return [len(sequencing.seq) for sequencing in fastq_list]
