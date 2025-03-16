@@ -7,7 +7,7 @@ fq1s = sorted(glob.glob('/exports/ana-scarlab/xqnguyen/course/sequencing/ABE_dem
 fq1s = sorted(glob.glob(data + '*_R1*.fastq.gz')) 
 fq2s = sorted(glob.glob(data + '*_R2*.fastq.gz')) 
 print(fq1s, fq2s)
-
+asdasd
 if len(fq1s) != len(fq2s):
     sys.exit("Please, different number of input and output fastq files")
 
