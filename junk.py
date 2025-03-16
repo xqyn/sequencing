@@ -68,3 +68,10 @@ _include_indx = [1, 2, 3]
 
 result = find_indels_substitutions(read_seq_al, ref_seq_al, _include_indx)
 print(result)
+
+ham_dist = 10
+for distance in range(1, ham_dist + 1):
+    print(distance)
+    # generate all possible positions     
+    positions = combinations(range(len(barcode)), distance)
+    print(next(positions))
