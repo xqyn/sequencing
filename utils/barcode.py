@@ -1,8 +1,6 @@
 
 print('Importing barcode_utils.py')
 
-from itertools import product, combinations
-
 from itertools import combinations, product
 
 def generate_barcode_variants(barcode, ham_dist=0):
