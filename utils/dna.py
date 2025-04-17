@@ -1,10 +1,9 @@
-
 #!/bin/bash python
-
 '''
 BELT - XQ Ng - 14 March 2025
 Leiden UMC
 ''' 
+
 print('Importing dna_utils.py')
 
 def ascii_to_phred(quality_string, offset=33):
