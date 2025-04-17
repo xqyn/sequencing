@@ -6,6 +6,9 @@ Motif finding - XQ Ng - 19 March 2025
 Leiden UMC
 ''' 
 
+from collections import Counter
+from itertools import zip_longest
+
 # --------------------------------------------------
 def hamming_dist(ref_seq: str, 
                 comp_seq: str) -> int:
@@ -23,7 +26,8 @@ def hamming_dist(ref_seq: str,
 
 
 def motif_finding(pattern: str, 
-                  sequence: str) -> tuple[int, Counter]:
+                  sequence: str,
+                  to_upper: bool = True) -> tuple[int, Counter]:
     """ Find motifs in the sequence with the lowest Hamming distance to the given pattern.
     Suppose that pattern <= sequence in length
     
@@ -34,6 +38,10 @@ def motif_finding(pattern: str,
     return
         (minimum Hamming distance, Counter of motifs with minimum distance)
     """
+    if to_upper:
+        pattern = pattern.upper()
+        sequence = sequence.upper()
+    
     ptn_len = len(pattern)
     min_dist = ptn_len
     k_mer_candidates = []
