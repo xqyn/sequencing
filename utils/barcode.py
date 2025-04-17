@@ -1,3 +1,10 @@
+#!/bin/bash python
+
+'''
+Motif finding - XQ Ng - 19 March 2025
+Leiden UMC
+''' 
+
 
 print('Importing barcode_utils.py')
 
