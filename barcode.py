@@ -1,8 +1,9 @@
 #!/bin/bash python
 
 '''
-Motif finding - XQ Ng - 19 March 2025
-Leiden UMC
+project: sequencing
+march 14 2025 - XQ - Leiden UMC
+generating barcode variants
 ''' 
 
 

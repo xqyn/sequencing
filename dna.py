@@ -1,7 +1,8 @@
 #!/bin/bash python
 '''
-BELT - XQ Ng - 14 March 2025
-Leiden UMC
+project: sequencing
+march 14 2025 - XQ - Leiden UMC
+modifying func for dna sequence
 ''' 
 
 print('Importing dna_utils.py')

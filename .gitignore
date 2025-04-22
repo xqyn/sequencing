@@ -1,18 +1,2 @@
-
-# --------------------------------------------------
-# utils
-
-utils/__pycache__/
-utils/*.pyc
-
-
-# data 
-data
-
-# dataset
-abe_R1.txt
-abe_R2.txt
-
-*.fasta
-
-junk.py
+__pycache__/
+*.pyc

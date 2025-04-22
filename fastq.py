@@ -1,8 +1,8 @@
 #!/bin/bash python
-
 '''
-BELT - XQ Ng - 14 March 2025
-Leiden UMC
+project: sequencing
+march 14 2025 - XQ - Leiden UMC
+class for fastq
 '''
 
 import gzip
@@ -10,8 +10,7 @@ import subprocess as sb
 from typing import NamedTuple, List, Iterator
 
 
-# --------------------------------------------------
-# class
+# class --------------------------------------------------
 class fastq(NamedTuple):
     """
     Define a fastq class for storing FASTQ records.
@@ -29,10 +28,8 @@ class fastq(NamedTuple):
     phred:  List[int]     # phred quality score 
     length: int     # length of the sequence
         
-    
 
-
-# --------------------------------------------------
+# fastq_seq --------------------------------------------------
 def fastq_seq(fastq_filename: str, 
               phred_offset: int = 33) -> Iterator[fastq]:
     """
