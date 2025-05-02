@@ -4,7 +4,7 @@ project: sequencing
 XQ - Leiden UMC
 motif algorithm
 update: 2025
-    - march 19: motif_finding
+    - march 19: pattern_in_seq
     - mei 2: motif_score
 
 Terminologies:
