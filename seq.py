@@ -59,6 +59,7 @@ def hamming(ref_seq: str,
 # --- compute_base_percent
 def compute_base_count(seq_list: list,
                        bases: str = 'ATCGN-',
+                       laplace: int = 0,
                        percentage: bool = False) -> dict:
     
     """
@@ -76,6 +77,9 @@ def compute_base_count(seq_list: list,
     bases : str
         string of valid dna base.
         (default: "ATCGN-").
+    laplace : str
+        Laplace’s Rule of Succession: add a pseudocount into the matrix
+        (default: 0).
     percentage : bool
         whether to returns the count or percentage occurrence
         (default: False)
@@ -89,31 +93,36 @@ def compute_base_count(seq_list: list,
     
     Examples
     --------
-    sequences = ["ATCGATCGATCG",
+    seq_list = ["ATCGATCGATCG",
                 "ATGGAATG-GC",
                 "ATCGATCGGTC",
                 "ATG-TGAT-GC",
                 "ATCGNNAT-NG"]
-    compute_base_count(sequences)
-    compute_base_count(sequences, percentage=True)
+    compute_base_count(seq_list)
+    compute_base_count(seq_list, percentage=True)
+    compute_base_count(seq_list, laplace = 1, percentage=True)
     """
     if not seq_list:
         return {base: [] for base in bases}
     
     # assume length of sequence in seq_list are equal
     length = len(seq_list[0])
-    
-    # init dict for base count for each position 
-    base_dict = {base: [0] * length for base in bases}
+    # init dict for base count for each position
+    # initialize with Laplace pseudocount
+    base_dict = {base: [laplace] * length for base in bases}
     
     # count occurences of each base from bases at each position
     for seq in seq_list:
-            for pos, base in enumerate(seq):
-                if base in bases:
-                    base_dict[base][pos] += 1
+        for pos, base in enumerate(seq):
+            if base in bases:
+                base_dict[base][pos] += 1
     
     if percentage:
-        return {base: [round(count / len(seq_list),5) * 100 for count in counts] for base, counts in base_dict.items()}
+        total_counts = len(seq_list) + (laplace * len(bases))
+        return {
+            base: [round(count / total_counts, 5) * 100 for count in counts]
+            for base, counts in base_dict.items()
+        }
     return base_dict
 
 
