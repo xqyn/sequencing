@@ -20,7 +20,7 @@ from seq import hamming
 # --- pattern_in_seq
 def pattern_in_seq(pattern: str,
                    sequence: str,
-                   upper: bool = True) -> tuple[int, Counter]:
+                   upper: bool = True) -> dict:
     """
     find motifs in the sequence with the lowest Hamming distance to the given pattern.
 
@@ -31,13 +31,14 @@ def pattern_in_seq(pattern: str,
     sequence : str
         string containing potential motifs.
     upper : bool
-        If True, converts pattern and sequence to uppercase before processing. Default is True.
+        converts pattern and sequence to uppercase before processing.
 
     Returns
     -------
     dict
-        Dictionary with minimum Hamming distance as key and a dictionary of motifs with that
-        distance as value.
+        dictionary with:
+            - key: minimum Hamming distance 
+            - value: dictionary of motifs and occurences.
 
     Raises
     ------
