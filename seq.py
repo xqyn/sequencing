@@ -60,7 +60,8 @@ def hamming(ref_seq: str,
 def compute_base_count(seq_list: list,
                        bases: str = 'ATCGN-',
                        laplace: int = 0,
-                       percentage: bool = False) -> dict:
+                       percentage: bool = False,
+                       fraction: bool = False) -> dict:
     
     """
     calculate the count/percentage of each base at each base position 
@@ -83,6 +84,9 @@ def compute_base_count(seq_list: list,
     percentage : bool
         whether to returns the count or percentage occurrence
         (default: False)
+    fraction : bool
+        Return fractions (sum to 1) instead of percentages 
+        (default: False).
 
     Returns
     -------
@@ -117,10 +121,11 @@ def compute_base_count(seq_list: list,
             if base in bases:
                 base_dict[base][pos] += 1
     
-    if percentage:
+    if percentage or fraction:
         total_counts = len(seq_list) + (laplace * len(bases))
+        multiplier = 1 if fraction else 100
         return {
-            base: [round(count / total_counts, 5) * 100 for count in counts]
+            base: [round(count / total_counts * multiplier, 5) for count in counts]
             for base, counts in base_dict.items()
         }
     return base_dict
