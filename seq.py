@@ -1,11 +1,11 @@
-'''
+"""
 project: sequencing
 XQ - Leiden UMC
 modifying func for dna sequence / dna list
 update: 2025
     - april 22: compute_base_count
     - mei 2: hamming_dist
-''' 
+"""
 
 from typing import NamedTuple, List, Dict
 from itertools import zip_longest
@@ -42,7 +42,9 @@ def hamming(ref_seq: str,
     Examples
     --------
     hamming("ATCGATCGATCG", "ATGGATCGGTCG", position=True)
+    [3, 9]
     hamming("ATCGATCGATCG", "ATGGATCGGTCG", return_dict=True)
+    {2: [3, 9]}
     """
     mismatches = [base for base, (ref, com) in enumerate(zip_longest(ref_seq, comp_seq), start=1) if ref != com]
     
@@ -52,7 +54,6 @@ def hamming(ref_seq: str,
         return mismatches
     
     return len(mismatches)
-
 
 
 # --- compute_base_percent
