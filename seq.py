@@ -1,10 +1,14 @@
 '''
 project: sequencing
-april 22 2025 - XQ - Leiden UMC
-modifying func for dna sequence
+XQ - Leiden UMC
+modifying func for dna sequence / dna list
+update: 2025
+    - april 22: compute_base_count
+    - mei 2: hamming_dist
 ''' 
 
 from typing import NamedTuple, List, Dict
+from itertools import zip_longest
 
 
 # compute_base_percent --------------------------------------------------
@@ -13,16 +17,40 @@ def compute_base_count(seq_list: list,
                        percentage: bool = False) -> dict:
     
     """
-    calculate the count/percentage of each base at each position 
-    in a   sequences list.
+    calculate the count/percentage of each base at each base position 
+    in a list of aligned DNA sequences.
+
+    analyzes a list of DNA sequences and computes the number or proportion of 
+    specified nucleotide bases (e.g., A, T, C, G, N, -) at each position. 
+    All sequences are assumed to be aligned and of the same length.
     
-    Args:
-        seq_list (list): list of DNA sequences (strings of equal length).
-        bases (str): string of valid base characters (default: "ATCGN-").
-        percentage (bool): whether to return as count or percentage (default: False) 
+    Parameters
+    ----------
+    seq_list : list
+        A list of DNA sequences string, equal length.
+    bases : str
+        string of valid dna base.
+        (default: "ATCGN-").
+    percentage : bool
+        whether to returns the count or percentage occurrence
+        (default: False)
+
+    Returns
+    -------
+    dict of list of int or float
+        a dictionary where each key is a base character from `bases`, 
+        and the corresponding value is a list of integers (counts) or floats (percentages)
+        representing the base frequency at each position across all sequences.
     
-    Returns:
-        dict: dict mapping each base to a list of percentages for each position.
+    Examples
+    --------
+    sequences = ["ATCGATCGATCG",
+                "ATGGAATG-GC",
+                "ATCGATCGGTC",
+                "ATG-TGAT-GC",
+                "ATCGNNAT-NG"]
+    compute_base_count(sequences)
+    compute_base_count(sequences, percentage=True)
     """
     if not seq_list:
         return {base: [] for base in bases}
@@ -42,4 +70,48 @@ def compute_base_count(seq_list: list,
     if percentage:
         return {base: [round(count / len(seq_list),5) * 100 for count in counts] for base, counts in base_dict.items()}
     return base_dict
+
+
+def hamming_dist(ref_seq: str, 
+                 comp_seq: str,
+                 position: bool = False,
+                 return_dict: bool = False) -> int:
+    """
+    Calculate the Hamming distance between two sequences.
+
+    Parameters
+    ----------
+    ref_seq : str
+        reference DNA sequence.
+    comp_seq : str
+        comparison DNA sequence.
+    position : bool
+        return the positions of the mismatches 
+        (default: False).
+    return_dict : bool
+        returns a dict with key as Hamming distance, value as list of mismatch position
+        (default: False).
+
+    Returns
+    -------
+    int or list of int or dict
+        number of positions (Hamming distance) between the two sequences.
+        returns a list of positions where the mismatches occur.
+        returns a dict with key as Hamming distance, value as list of mismatch position.
+
+    Examples
+    --------
+    hamming_dist("ATCG", "ATGG")
+    hamming_dist("AGCT", "AGCA")
+    hamming_dist("ATCGATCGATCG", "ATGGATCGGTCG", position=True)
+    hamming_dist("ATCGATCGATCG", "ATGGATCGGTCG", return_dict=True)
+    """
+    mismatches = [base for base, (ref, com) in enumerate(zip_longest(ref_seq, comp_seq), start=1) if ref != com]
+    
+    if return_dict:
+        return {len(mismatches): mismatches}
+    elif position:
+        return mismatches
+    
+    return len(mismatches)
 
