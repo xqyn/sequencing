@@ -11,7 +11,51 @@ from typing import NamedTuple, List, Dict
 from itertools import zip_longest
 
 
-# compute_base_percent --------------------------------------------------
+# --- hamming_dist
+def hamming(ref_seq: str,
+            comp_seq: str,
+            position: bool = False,
+            return_dict: bool = False) -> int:
+    """
+    Calculate the Hamming distance between two sequences.
+
+    Parameters
+    ----------
+    ref_seq : str
+        reference DNA sequence.
+    comp_seq : str
+        comparison DNA sequence.
+    position : bool
+        return the positions of the mismatches 
+        (default: False).
+    return_dict : bool
+        returns a dict with key as Hamming distance, value as list of mismatch position
+        (default: False).
+
+    Returns
+    -------
+    int or list of int or dict
+        number of positions (Hamming distance) between the two sequences.
+        returns a list of positions where the mismatches occur.
+        returns a dict with key as Hamming distance, value as list of mismatch position.
+
+    Examples
+    --------
+    hamming("ATCGATCGATCG", "ATGGATCGGTCG", position=True)
+    hamming("ATCGATCGATCG", "ATGGATCGGTCG", return_dict=True)
+    """
+    mismatches = [base for base, (ref, com) in enumerate(zip_longest(ref_seq, comp_seq), start=1) if ref != com]
+    
+    if return_dict:
+        return {len(mismatches): mismatches}
+    elif position:
+        return mismatches
+    
+    return len(mismatches)
+
+
+
+# --- compute_base_percent
 def compute_base_count(seq_list: list,
                        bases: str = 'ATCGN-',
                        percentage: bool = False) -> dict:
@@ -71,47 +115,4 @@ def compute_base_count(seq_list: list,
         return {base: [round(count / len(seq_list),5) * 100 for count in counts] for base, counts in base_dict.items()}
     return base_dict
 
-
-def hamming_dist(ref_seq: str, 
-                 comp_seq: str,
-                 position: bool = False,
-                 return_dict: bool = False) -> int:
-    """
-    Calculate the Hamming distance between two sequences.
-
-    Parameters
-    ----------
-    ref_seq : str
-        reference DNA sequence.
-    comp_seq : str
-        comparison DNA sequence.
-    position : bool
-        return the positions of the mismatches 
-        (default: False).
-    return_dict : bool
-        returns a dict with key as Hamming distance, value as list of mismatch position
-        (default: False).
-
-    Returns
-    -------
-    int or list of int or dict
-        number of positions (Hamming distance) between the two sequences.
-        returns a list of positions where the mismatches occur.
-        returns a dict with key as Hamming distance, value as list of mismatch position.
-
-    Examples
-    --------
-    hamming_dist("ATCG", "ATGG")
-    hamming_dist("AGCT", "AGCA")
-    hamming_dist("ATCGATCGATCG", "ATGGATCGGTCG", position=True)
-    hamming_dist("ATCGATCGATCG", "ATGGATCGGTCG", return_dict=True)
-    """
-    mismatches = [base for base, (ref, com) in enumerate(zip_longest(ref_seq, comp_seq), start=1) if ref != com]
-    
-    if return_dict:
-        return {len(mismatches): mismatches}
-    elif position:
-        return mismatches
-    
-    return len(mismatches)
 
