@@ -39,6 +39,12 @@ def hamming(ref_seq: str,
         returns a list of positions where the mismatches occur.
         returns a dict with key as Hamming distance, value as list of mismatch position.
 
+    Raises
+    ------
+    ValueError
+        If sequences have different lengths or contain invalid nucleotides.
+        If both position and return_dict are True.
+        
     Examples
     --------
     hamming("ATCGATCGATCG", "ATGGATCGGTCG", position=True)
@@ -46,6 +52,14 @@ def hamming(ref_seq: str,
     hamming("ATCGATCGATCG", "ATGGATCGGTCG", return_dict=True)
     {2: [3, 9]}
     """
+    
+    if len(ref_seq) != len(comp_seq):
+        raise ValueError("Sequences must have equal length for Hamming distance")
+    
+    valid_nucleotides = set('ACGTN')
+    if not (set(ref_seq).issubset(valid_nucleotides) and set(comp_seq).issubset(valid_nucleotides)):
+        raise ValueError("Sequences must contain only A, C, G, T, or N")
+    
     mismatches = [base for base, (ref, com) in enumerate(zip_longest(ref_seq, comp_seq), start=1) if ref != com]
     
     if return_dict:

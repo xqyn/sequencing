@@ -53,8 +53,21 @@ def plot_bar(df,
     
     Returns
     -------
-    None
-        The function generates and optionally saves a bar plot.
+    matplotlib.figure.Figure
+        The generated figure object for further customization if needed.
+    
+    Example
+    -------
+    >>> bc_sp_pair = pd.DataFrame({
+    ...     'ABE': [21431, 12758, 17968, 20056, 11116, 15565],
+    ...     'CBE': [21074, 27101, 21821, 31957, 16373, 23149]
+    ... }, index=['d0', 'd1', 'd3', 'd5', 'd10', 'd10u'])
+    >>> ystick = [2.5e3, 5e3, 7.5e3, 1e4, 2.5e4, 5e4]
+    >>> fig_dir = './figures/'
+    >>> fig = plot_bar(bc_sp_pair, title='barcode_spacer_pair', 
+    ...                color_bar=['#f7b5a8', '#f06449'], 
+    ...                fig_dir=fig_dir, height=8, width=12, 
+    ...                ysticks=ystick)
     """
     
     # input validation:
