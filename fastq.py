@@ -6,8 +6,9 @@ class for fastq
 '''
 
 import gzip
-import subprocess as sb
+#import subprocess as sb
 from typing import NamedTuple, List, Iterator
+from itertools import islice
 
 
 # class --------------------------------------------------
@@ -31,18 +32,30 @@ class fastq(NamedTuple):
 
 # fastq_seq --------------------------------------------------
 def fastq_seq(fastq_filename: str, 
-              phred_offset: int = 33) -> Iterator[fastq]:
+              phred_offset: int = 33,
+              lines: int = None) -> Iterator[fastq]:
     """
-    Read a fastq file and return a list of fastq objects.
-    fastq_filename: the name of the fastq file
+    Args:
+        fastq_filename: The name of the fastq file.
+        phred_offset: Phred score offset for quality conversion (default: 33).
+        lines: Number of FASTQ records to yield (default: None, yields all records).
+    
+    Yields:
+        fastq: A fastq object for each record.
+    
+    Raises:
+        ValueError: If FASTQ records are incomplete or sequence/quality lengths differ.
     """
     
     fastq_list = []
     opener = gzip.open if fastq_filename.endswith('.gz') else open
     with opener(fastq_filename, 'rt') as sequencing:
+        # Set iterator with optional limit using islice
+        seq_iterator = islice(sequencing, None) if lines is None else islice(sequencing, lines * 4)
+        
         # seting objects for temp sequecing
         temp_seq = [None, None, None, None]
-        for seq_num, line in enumerate(sequencing):
+        for seq_num, line in enumerate(seq_iterator):
             temp_seq[seq_num % 4] = line.strip()    # store line in temp_seq
             if seq_num % 4 == 3:                    # for evey 4th line
                 if None in temp_seq:
