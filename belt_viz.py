@@ -4,6 +4,7 @@ XQ - Leiden UMC
 visualization of squencing alignments
 update: 2025
     - juni 16: plot_base_grid
+    - juni 26: fix x_label for position base + fsize adds
 """
 
 import os
@@ -19,11 +20,12 @@ def plot_base_grid(seq_list: list,
                    height: float = 4,
                    width: float = 8,
                    colors: dict = None,
-                   fig_dir: str = './',
-                   fig_name: str = 'bases',
+                   fig_dir: str = './figure/',
+                   fig_name: str = 'viz_bases',
                    plot_title: str = "DNA sequence",
                    x_lab: str = "Position",
-                   y_lab: str = "Sequence"
+                   y_lab: str = "Sequence",
+                   fsize: float = 12
                    ):
     """
     plot the headmap-style of list of DNA sequences
@@ -63,6 +65,8 @@ def plot_base_grid(seq_list: list,
         
     y_lab : str, optional
         label for the y-axis
+    
+    fsize : size of text
 
     Returns
     -------
@@ -115,23 +119,61 @@ def plot_base_grid(seq_list: list,
         for j, base in enumerate(row):
             rect = plt.Rectangle((j - 0.5, i - 0.5), 1, 1, facecolor=colors.get(base, '#CCCCCC'))
             ax.add_patch(rect)
-            ax.text(j, i, base, ha='center', va='center', color='black')
+            ax.text(j, i, base, ha='center', va='center', color='black', fontsize=fsize)
+     
+    # #
+    # num_base = len(seq_list_bases[0])
+    # num_seq = len(seq_list_bases)
+    # # Axis labels and ticks
+    # if x_labels is None:
+    #     x_labels = list(range(num_base))
     
-    # Axis labels and ticks
+    # if y_labels is None:
+    #     y_labels = list(range(num_seq))
+    
+    # x_axis_labels = [label if label in x_labels else '' for label in x_labels]
+    
+    # # Set limits and grid
+    # ax.set_aspect('equal', adjustable='box')
+    # ax.set_xlim(-0.5, num_base - 0.5)
+    # ax.set_ylim(-0.5, num_seq - 0.5)
+    # ax.set_xticks(range(len(x_labels)))
+    # ax.set_xticklabels(x_axis_labels)
+    # #ax.set_yticks(range(len(y_labels)))
+    # ax.set_yticklabels(y_labels)
+    # ax.set_title(plot_title)
+    # ax.set_xlabel(x_lab)
+    # ax.set_ylabel(y_lab)
+    # ax.invert_yaxis()
+    # plt.tight_layout()
+    # Get dimensions
+    num_base = len(seq_list_bases[0])
+    num_seq = len(seq_list_bases)
+    
+    # Set x-axis labels
     if x_labels is None:
-        x_labels = list(range(len(seq_list_bases[0])))
+        x_labels = list(range(num_base))  # Default to 0-based indices
     
+    # # Ensure x_labels length matches num_base
+    # if len(x_labels) != num_base:
+    #     x_labels = list(range(num_base))  # Fallback to default if mismatch
+    
+    # Set ticks and labels
+    ax.set_xticks(range(num_base))  # One tick per base position
+    x_axis_labels = [pos if pos in x_labels else '' for pos in range(num_base)]
+    ax.set_xticklabels(x_axis_labels)    # Assign labels directly
+    
+    # Set y-axis labels
     if y_labels is None:
-        y_labels = list(range(len(seq_list_bases)))
+        y_labels = list(range(num_seq))  # Default to 0-based indices
     
-    # Set limits and grid
+    ax.set_yticks(range(num_seq))    # One tick per sequence
+    ax.set_yticklabels(y_labels)     # Assign labels directly
+    
+    # Set plot properties
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlim(-0.5, len(x_labels) - 0.5)
-    ax.set_ylim(-0.5, len(y_labels) - 0.5)
-    ax.set_xticks(range(len(x_labels)))
-    ax.set_xticklabels(x_labels)
-    ax.set_yticks(range(len(y_labels)))
-    ax.set_yticklabels(y_labels)
+    ax.set_xlim(-0.5, num_base - 0.5)
+    ax.set_ylim(-0.5, num_seq - 0.5)
     ax.set_title(plot_title)
     ax.set_xlabel(x_lab)
     ax.set_ylabel(y_lab)
