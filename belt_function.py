@@ -24,9 +24,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
-import seq as seq
+import sequence as seq
 import seq_align as seq_align
-
 
 # #--------------------------------------------------
 # # PREPROCESSING STEP
@@ -49,7 +48,6 @@ import seq_align as seq_align
     
 #     return cfg
 
-# chr1_pre1_processing.py --------------------------------------------------
 
 
 # chr1_pre3_overview.py --------------------------------------------------
