@@ -5,6 +5,7 @@ visualization of squencing alignments
 update: 2025
     - juni 16: plot_base_grid
     - juni 26: fix x_label for position base + fsize adds
+    - juli 15: cigar_recover (checking docstring)
 """
 
 import os
@@ -25,7 +26,8 @@ def plot_base_grid(seq_list: list,
                    plot_title: str = "DNA sequence",
                    x_lab: str = "Position",
                    y_lab: str = "Sequence",
-                   fsize: float = 12
+                   fsize: float = 12,
+                   artificial=False
                    ):
     """
     plot the headmap-style of list of DNA sequences
@@ -94,19 +96,24 @@ def plot_base_grid(seq_list: list,
     # Validate equal length of all sequences
     seq_lengths = [len(seq) for seq in seq_list]
     if len(set(seq_lengths)) > 1:
-        raise ValueError("All sequences in `seq_list` must be of the same length.")
+        if artificial:
+            max_len = max(seq_lengths)
+            seq_list[:] = [seq + 'X' * (max_len - len(seq)) for seq in seq_list]
+        else:
+            raise ValueError("All sequences in `seq_list` must be of the same length.")
     
     # convert sequences to uppercase character lists
     seq_list_bases = [list(seq.upper()) for seq in seq_list]
     
     
     if colors is None:
-        colors = {'A': '#FF9999', 
-                  'T': '#99FF99', 
-                  'C': '#9999FF', 
-                  'G': '#FFFF99',
+        colors = {'A': '#FF9999', 'a': '#FF6666',
+                  'T': '#99FF99', 't': '#66FF66',
+                  'C': '#9999FF', 'c': '#6666FF',
+                  'G': '#FFFF99', 'g': '#FFFF66',
                   '-': '#FFFFFF',
-                  'N': '#808080',
+                  'N': '#A0A0A0', 'n': '#808080',
+                  '×': '#1C2526', 'X': '#0E1213'
                   }
     
     # Create figure and axis
@@ -186,5 +193,82 @@ def plot_base_grid(seq_list: list,
     plt.close()
 
 
+
+
+def cigar_recover(sequence, cigar):
+    """
+    Recover the original sequence by interpreting the CIGAR string.
+    
+    CIGAR operations are handled as follows:
+    - M: Keep the sequence as is.
+    - D: Add '-' for deleted bases.
+    - I: Convert bases to lowercase.
+    - S: Keep the sequence as is (soft-clipped bases are retained).
+    - H: Add '×' for hard-clipped bases.
+    
+    Args:
+        sequence (str): The input sequence (e.g., 'CCTAGTCCAAACTGGATCTCTGCTGTCCCTG').
+        cigar (str): The CIGAR string (e.g., '224H31M').
+    
+    Returns:
+        str: The recovered sequence with modifications based on CIGAR operations.
+    
+    Examples:
+        >>> sequence = 'CCTAGTCCAAACTGG'
+        >>> cigar = '5M'  # Keep 5 bases as is
+        >>> cigar_recover(sequence, cigar)
+        'CCTAG'
+        
+        >>> cigar = '3H5M'  # Add 3 '×' then keep 5 bases
+        >>> cigar_recover(sequence, cigar)
+        '×××CCTAG'
+        
+        >>> cigar = '5M3D'  # Keep 5 bases, add 3 '-'
+        >>> cigar_recover(sequence, cigar)
+        'CCTAG---'
+        
+        >>> cigar = '5M3I'  # Keep 5 bases, lowercase 3 bases
+        >>> cigar_recover(sequence, cigar)
+        'CCTAGtcc'
+        
+        >>> cigar = '5M3S'  # Keep 5 bases, keep 3 bases (soft-clipped)
+        >>> cigar_recover(sequence, cigar)
+        'CCTAGTCC'
+        
+        >>> cigar = '2H3M2D2I3S'  # Combined: 2 '×', 3 bases, 2 '-', 2 lowercase, 3 bases
+        >>> cigar_recover(sequence, cigar)
+        '××CCT--aaACT'
+        
+        >>> sequence = 'CCTAGTCCAAACTGGATCTCTGCTGTCCCTG'
+        >>> cigar = '224H31M'
+        >>> cigar_recover(sequence, cigar)
+        '××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××CCTAGTCCAAACTGGATCTCTGCTGTCCCTG'
+    """
+    import re
+    
+    # Parse CIGAR string into operations (e.g., [('224', 'H'), ('31', 'M')])
+    cigar_ops = re.findall(r'(\d+)([HMSID])', cigar)
+    
+    result = []
+    seq_pos = 0  # Position in the input sequence
+    
+    for count, op in cigar_ops:
+        count = int(count)
+        if op == 'H':
+            # Add 'count' number of '×' for hard-clipped bases
+            result.append('×' * count)
+        elif op == 'D':
+            # Add 'count' number of '-' for deleted bases
+            result.append('-' * count)
+        elif op == 'M' or op == 'S':
+            # Keep 'count' bases from the sequence as is
+            result.append(sequence[seq_pos:seq_pos + count])
+            seq_pos += count
+        elif op == 'I':
+            # Convert 'count' bases to lowercase
+            result.append(sequence[seq_pos:seq_pos + count].lower())
+            seq_pos += count
+    
+    return ''.join(result)
 
 
