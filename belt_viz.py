@@ -6,6 +6,7 @@ update: 2025
     - juni 16: plot_base_grid
     - juni 26: fix x_label for position base + fsize adds
     - juli 15: cigar_recover (checking docstring)
+    - juli 21: add phred as list into seq_list in plot_base_grid
 """
 
 import os
@@ -98,13 +99,21 @@ def plot_base_grid(seq_list: list,
     if len(set(seq_lengths)) > 1:
         if artificial:
             max_len = max(seq_lengths)
-            seq_list[:] = [seq + 'X' * (max_len - len(seq)) for seq in seq_list]
+            seq_list[:] = [
+                seq + 'X' * (max_len - len(seq)) if isinstance(seq, str) else 
+                seq + ['X'] * (max_len - len(seq)) if isinstance(seq, list) else 
+                seq
+                for seq in seq_list]
         else:
             raise ValueError("All sequences in `seq_list` must be of the same length.")
-    
     # convert sequences to uppercase character lists
-    seq_list_bases = [list(seq.upper()) for seq in seq_list]
-    
+    #seq_list_bases = [list(seq.upper()) for seq in seq_list]
+    seq_list_bases = [
+        list(seq.upper()) if isinstance(seq, str) else 
+        [str(base).upper() for base in seq] if isinstance(seq, list) else 
+        [str(base) for base in seq]
+        for seq in seq_list
+    ]
     
     if colors is None:
         colors = {'A': '#FF9999', 'a': '#FF6666',
@@ -115,19 +124,28 @@ def plot_base_grid(seq_list: list,
                   'N': '#A0A0A0', 'n': '#808080',
                   '×': '#1C2526', 'X': '#0E1213'
                   }
+        for i in range(1, 41):
+            t = (i - 1) / 39.0
+            # White (#FFFFFF, RGB: 255,255,255) to orange (#FF4500, RGB: 255,69,0)
+            r = 255  # Red stays constant
+            g = int(255 - (255 - 69) * t)  # 255 to 69
+            b = int(255 - (255 - 0) * t)   # 255 to 0
+            colors[str(i)] = f'#{r:02X}{g:02X}{b:02X}'
     
     # Create figure and axis
     fig = plt.figure(figsize=(width, height))
     gs = gridspec.GridSpec(1, 1)
     ax = fig.add_subplot(gs[0, 0])
-    
+     
     # Plot bases with colored rectangles
     for i, row in enumerate(seq_list_bases):
         for j, base in enumerate(row):
             rect = plt.Rectangle((j - 0.5, i - 0.5), 1, 1, facecolor=colors.get(base, '#CCCCCC'))
             ax.add_patch(rect)
-            ax.text(j, i, base, ha='center', va='center', color='black', fontsize=fsize)
-     
+            # text color: white for PHRED scores (strings of integers 1-40), black otherwise
+            text_color = 'white' if base.isdigit() and 1 <= int(base) <= 40 else 'black'
+            #ax.text(j, i, base, ha='center', va='center', color='black', fontsize=fsize)
+            ax.text(j, i, base, ha='center', va='center', color=text_color, fontsize=fsize)
     # #
     # num_base = len(seq_list_bases[0])
     # num_seq = len(seq_list_bases)
@@ -157,27 +175,20 @@ def plot_base_grid(seq_list: list,
     num_base = len(seq_list_bases[0])
     num_seq = len(seq_list_bases)
     
-    # Set x-axis labels
+    # set x-axis labels
     if x_labels is None:
-        x_labels = list(range(num_base))  # Default to 0-based indices
-    
-    # # Ensure x_labels length matches num_base
-    # if len(x_labels) != num_base:
-    #     x_labels = list(range(num_base))  # Fallback to default if mismatch
-    
-    # Set ticks and labels
-    ax.set_xticks(range(num_base))  # One tick per base position
+        x_labels = list(range(num_base))    # default to 0-based indices
+    ax.set_xticks(range(num_base))          # one tick per base position
     x_axis_labels = [pos if pos in x_labels else '' for pos in range(num_base)]
-    ax.set_xticklabels(x_axis_labels)    # Assign labels directly
+    ax.set_xticklabels(x_axis_labels, rotation=45, ha='right')       # assign labels directly
     
-    # Set y-axis labels
+    # set y-axis labels
     if y_labels is None:
-        y_labels = list(range(num_seq))  # Default to 0-based indices
+        y_labels = list(range(num_seq))
+    ax.set_yticks(range(num_seq))
+    ax.set_yticklabels(y_labels)
     
-    ax.set_yticks(range(num_seq))    # One tick per sequence
-    ax.set_yticklabels(y_labels)     # Assign labels directly
-    
-    # Set plot properties
+    # set plot properties
     ax.set_aspect('equal', adjustable='box')
     ax.set_xlim(-0.5, num_base - 0.5)
     ax.set_ylim(-0.5, num_seq - 0.5)
@@ -187,12 +198,10 @@ def plot_base_grid(seq_list: list,
     ax.invert_yaxis()
     plt.tight_layout()
     
-    # Save figure
+    # save figure
     os.makedirs(fig_dir, exist_ok=True)
     plt.savefig(os.path.join(fig_dir, fig_name))
     plt.close()
-
-
 
 
 def cigar_recover(sequence, cigar):
@@ -270,5 +279,3 @@ def cigar_recover(sequence, cigar):
             seq_pos += count
     
     return ''.join(result)
-
-
