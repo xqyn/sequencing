@@ -9,7 +9,7 @@ update:
     - may 1
     - juni 17: add trace_barcode
     - juni 17: add hamming into collect_barcode
-    - juli 21: add extract_read_sequence
+    - juli 21: add extract_seq_fastq
 note: combine trace_barcode and align_motif
 ''' 
 
@@ -29,6 +29,27 @@ import pandas as pd
 
 import sequence as sequence
 import seq_align as seq_align
+
+
+# dna general --------------------------------------------------
+
+def ascii_to_phred(quality_string, offset=33):
+    """Convert an ASCII quality to Phred scores"""
+    return [ord(char) - offset for char in quality_string]
+
+
+def complement(seq, reverse=False):
+    """Return the complement of a sequence"""
+    mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C',
+               'a': 't', 't': 'a', 'c': 'g', 'g': 'c'}
+    complemented = ''.join([mapping.get(base, base) for base in seq])
+    return complemented[::-1] if reverse else complemented
+
+
+def rever_complement(seq):
+    """Return the reverse complement of a sequence"""
+    return complement(seq, reverse=True)
+
 
 # chr1_pre3_overview.py --------------------------------------------------
 def count_uniq(df, column, return_list=False):
@@ -51,72 +72,13 @@ def count_uniq(df, column, return_list=False):
     return uniques if return_list else len(uniques)
 
 
-# chr2_trace_edit.py--------------------------------------------------
-
-
-# # --------------------------------------------------
-# def trace_barcode(bc_sp_dict: dict[str, pd.DataFrame],
-#                   bc_seq: str,
-#                   condition: str = 'day') -> pd.DataFrame:
-#     """
-#     Trace editing changes for a specific barcode across experimental conditions.
-    
-#     Parameters
-#     ----------
-#     bc_sp_dict : dict of str -> pd.DataFrame
-#         Dictionary mapping condition names (e.g., 'day1', 'day2') to DataFrames 
-#         containing barcode-spacer mappings. Each DataFrame should have an index 
-#         of barcode sequences and a 'spacer' column with corresponding spacer sequences.
-#     bc_seq : str
-#         The barcode sequence to trace across conditions.
-#     condition : str, optional
-#         The label name to use for the condition column in the result. Default is 'day'.
-    
-#     Returns
-#     -------
-#     pd.DataFrame
-#         A DataFrame containing spacer sequences and their alignment scores and 
-#         Hamming distances to the reference spacer for the specified barcode, 
-#         across all conditions where the barcode is present.
-    
-#     Notes
-#     -----
-#     - The reference spacer is taken from the first condition where the barcode is found.
-#     - Assumes `align_pairwise` returns an object with `.score`.
-#     - Assumes `sequence.hamming(a, b)` returns the Hamming distance between two sequences.
-    
-#     Example
-#     -------
-#     >>> trace_barcode(bc_sp_dict, "ACGT123")
-#     """
-    
-#     # collect all matching rows across conditions
-#     df_trace = pd.DataFrame()
-#     for cond in sorted(bc_sp_dict.keys()):
-#         df_cond = bc_sp_dict[cond]
-#         if bc_seq in df_cond.index:
-#             df_cond = bc_sp_dict[cond][bc_sp_dict[cond].index == bc_seq]
-#             df_cond.insert(2, condition, cond)
-#             df_trace = pd.concat([df_trace, df_cond])
-    
-#     if df_trace.empty:
-#         return df_trace  # Return empty DataFrame if barcode not found
-    
-#     # get original spacer and compute scores/distances
-#     sp_ori = df_trace['spacer'].iloc[0]
-#     df_trace['score'] = [seq_align.align_pairwise(sp_ori, spacer).score for spacer in df_trace['spacer']]
-#     df_trace['hamm_dist'] = [sequence.hamming(sp_ori, spacer) for spacer in df_trace['spacer']]
-    
-#     return df_trace
-
-
-# chr3_nam_check --------------------------------------------------
+# chr3_bam_check --------------------------------------------------
 from Bio import SeqIO
 import gzip
 import sys
 
 
-def extract_read_sequence(read1_file, read2_file, read_id, phred=False):
+def extract_seq_fastq(read1_file, read2_file, read_id, phred=False):
     """
     Extract sequences and optionally Phred scores for a given read ID from read1 and read2 FASTQ.gz files.
     
@@ -174,20 +136,15 @@ def extract_read_sequence(read1_file, read2_file, read_id, phred=False):
     return (read1_sequence, read2_sequence, read1_phred, read2_phred, record.id) if phred else (read1_sequence, read2_sequence)
 
 
-
-def ascii_to_phred(quality_string, offset=33):
-    """Convert an ASCII quality to Phred scores"""
-    return [ord(char) - offset for char in quality_string]
-
-
-def complement(seq, reverse=False):
-    """Return the complement of a sequence"""
-    mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C',
-               'a': 't', 't': 'a', 'c': 'g', 'g': 'c'}
-    complemented = ''.join([mapping.get(base, base) for base in seq])
-    return complemented[::-1] if reverse else complemented
-
-
-def rever_complement(seq):
-    """Return the reverse complement of a sequence"""
-    return complement(seq, reverse=True)
+def reorder_reads(data, seq_list):
+    ref = [x for x in data if x == 'ref']
+    read1 = sorted([x for x in data if x.startswith('read1_')], key=lambda x: ['start', 'inbetween', 'end'].index(x.split('_')[1]))
+    read2 = sorted([x for x in data if x.startswith('read2_')], key=lambda x: ['start', 'inbetween', 'end'].index(x.split('_')[1]))
+    reordered_data = ref + read1 + read2
+    
+    # Get indices of reordered data in original data
+    indices = [data.index(x) for x in reordered_data]
+    # Reorder seq_list using the same indices
+    reordered_seq = [seq_list[i] for i in indices]
+    
+    return reordered_data, reordered_seq
