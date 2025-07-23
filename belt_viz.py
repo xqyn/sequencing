@@ -255,6 +255,9 @@ def cigar_recover(sequence, cigar):
     """
     import re
     
+    if cigar is None:
+        return sequence
+    
     # Parse CIGAR string into operations (e.g., [('224', 'H'), ('31', 'M')])
     cigar_ops = re.findall(r'(\d+)([HMSID])', cigar)
     
