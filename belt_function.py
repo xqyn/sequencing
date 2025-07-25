@@ -11,6 +11,10 @@ update:
     - juni 17: add hamming into collect_barcode
     - juli 21: add extract_seq_fastq
     - juli 23: add extract_pair_fastq, extract_bam, process_query/ries
+    - juli 24-25: 
+            add class fastq and ReadAlign
+            copy `align_pairwise` from trace_barcode.py
+            write out `process_pair_reads` for generate consensus read
 note: combine trace_barcode and align_motif
 ''' 
 
@@ -123,7 +127,7 @@ def extract_pair_fastq(read_id,
     r1_id = None
     
     # Parse R1 FASTQ
-    print(f"Opening R1 file...")
+    #print(f"Opening R1 file...")
     opener = gzip.open if read1_file.endswith('.gz') else open
     try:
         with opener(read1_file, 'rt') as queryR1:
@@ -140,7 +144,7 @@ def extract_pair_fastq(read_id,
         print(f"Error reading {read1_file}: {str(e)}")
         return None
     
-    print(f"Opening R2 file...")
+    #print(f"Opening R2 file...")
     # Parse R2 FASTQ
     opener = gzip.open if read2_file.endswith('.gz') else open
     try:
@@ -181,6 +185,159 @@ def extract_pair_fastq(read_id,
         r2_seq_rev=r2_seq_rev,
         r2_phred_rev=r2_phred_rev
     )
+
+def align_pairwise(ref: str,
+                   seq: str,
+                   mode: str = 'local',
+                   match_score: float = 1,
+                   mismatch_score: float = 0,
+                   open_gap_score: float = -0.9,
+                   extend_gap_score: float = -2,
+                   return_best: bool = True):     # Return aligned sequence + score or just score
+    
+    """
+    alignment method for pairwise sequence.
+
+    args:
+        ref: referemce sequence.
+        seq: sequence to align.
+        mode: alignment mode ('local' or 'global').
+        match_score: score for a match.
+        mismatch_score: score for a mismatch.
+        open_gap_score: gap open penalty.
+        extend_gap_score: gap extension penalty.
+        return_alignment: If True, returns (aligned sequence, score), else just score.
+        print_alignment: If True, prints the best alignment.
+    
+    returns
+        if return_alignment=True: (best_alignment_str, best_score)
+        else: best_score (float)
+
+    """
+    # checking mode
+    if mode not in ['local', 'global']:
+        raise ValueError("Mode must be 'local' or 'global'")
+    
+    # create aligner model
+    aligner = Align.PairwiseAligner()
+    
+    # setting aligne param    
+    aligner.mode = mode
+    aligner.match_score = match_score
+    aligner.mismatch_score = mismatch_score
+    aligner.open_gap_score = open_gap_score
+    aligner.extend_gap_score = extend_gap_score
+    aligner.target_left_gap_score = 0  
+    aligner.target_left_gap_score = -10  # High penalty to prevent gaps at target start
+    aligner.query_left_open_gap_score = 0  # Allow gap at query start
+    
+    # performing alignement
+    aligner_all = aligner.align(ref, seq)
+    
+    if return_best:
+        best_align = None
+        best_score = 0
+        for align in aligner_all:
+            if align.score > best_score:
+                best_align = align
+        return best_align
+    else:
+        return aligner_all
+
+# ---Making consensus
+class ReadAlign:
+    def __init__(self, 
+                 r1_seq_align, 
+                 r1_phred_align, 
+                 r2_seq_align, 
+                 r2_phred_align, 
+                 css_seq, 
+                 css_phred):
+        self.r1_seq_align = r1_seq_align
+        self.r1_phred_align = r1_phred_align
+        self.r2_seq_align = r2_seq_align
+        self.r2_phred_align = r2_phred_align
+        self.css_seq = css_seq
+        self.css_phred = css_phred
+
+def process_pair_reads(ref, read_pairs):
+    # Process each read pair
+    for pair_idx, (seq, seq_phred) in enumerate(read_pairs, 1):
+        #print(f"\nProcessing read pair {pair_idx}...")
+        
+        # step 1: initial alignment and check for sequencing shift
+        aligner = align_pairwise(ref, seq, mode='local')
+        start_ref = aligner.indices[0][0]
+        start_seq = aligner.indices[1][0]
+        shift = start_seq - start_ref
+        # adjust sequence and Phred scores based on shift
+        if shift > 0:
+            # shift > 0: trimming first {shift} bases from sequence and Phred scores
+            seq = seq[shift:]
+            seq_phred = seq_phred[shift:]
+            aligner = align_pairwise(ref, seq, mode='local')
+        elif shift < 0:
+            seq = ref[:abs(shift)] + seq
+            seq_phred = [0] * abs(shift) + seq_phred
+            aligner = align_pairwise(ref, seq, mode='local')
+        else:
+            # no shift detected, proceeding with original sequence
+            pass
+        
+        # step 2: check for insertions and remove them
+        ref_align = aligner.indices[0]
+        insert = np.where(ref_align < 0)[0].tolist()
+        if insert:
+            seq = ''.join([c for i, c in enumerate(seq) if i not in insert])
+            seq_phred = [v for i, v in enumerate(seq_phred) if i not in insert]
+        else:
+            pass
+        
+        # step 3: final alignment and compute aligned Phred scores
+        aligner = align_pairwise(ref, seq, mode='local')
+        seq = aligner[1]
+        phred_align = [0 if pos < 0 else seq_phred[pos] for pos in aligner.indices[1]]
+        
+        # step 4: add artificial bases if short len
+        if len(seq) < len(ref):
+            add = len(ref) - len(seq)
+            seq += ref[-add:]
+            phred_align += [0] * add
+            
+            
+        # store results for this read pair
+        if pair_idx == 1:
+            r1_seq_align, r1_phred_align = seq, phred_align
+        else:
+            r2_seq_align, r2_phred_align = seq, phred_align
+    
+    # step 5: generate consensus sequence and Phred scores
+    print("Generating consensus sequence...")
+    css_seq = []
+    css_phred = []
+    for ind, (r1_base_score, r2_base_score) in enumerate(zip(r1_phred_align, r2_phred_align)):
+        mean = int((r1_base_score + r2_base_score) / 2)
+        r1_base, r2_base = r1_seq_align[ind], r2_seq_align[ind]
+        
+        if r1_base_score > r2_base_score:
+            base = r1_base
+        elif r2_base_score > r1_base_score:
+            base = r2_base
+        else:
+            base = (r1_base if r1_base == r2_base or r1_base == ref[ind] else
+                    r2_base if r2_base == ref[ind] else 'Q')
+        
+        css_seq.append(base)
+        css_phred.append(mean if base != 'Q' else 0)
+    
+    # Return results as a single object
+    
+    return ReadAlign(r1_seq_align, 
+                     r1_phred_align, 
+                     r2_seq_align, 
+                     r2_phred_align, 
+                     ''.join(css_seq), 
+                     css_phred)
 
 # ---BAM
 import pysam
@@ -298,11 +455,37 @@ def extract_bam(
     return seq_list, cigar_list, name_list
 
 
+# def reorder_reads(data, seq_list):
+#     ref = [x for x in data if x == 'ref']
+#     read1 = sorted([x for x in data if x.startswith('read1_')], key=lambda x: ['start', 'inbetween', 'end', 'None'].index(x.split('_')[1]))
+#     r2_seq = sorted([x for x in data if x.startswith('read2_')], key=lambda x: ['start', 'inbetween', 'end', 'None'].index(x.split('_')[1]))
+#     reordered_data = ref + read1 + r2_seq
+    
+#     # Get indices of reordered data in original data
+#     indices = [data.index(x) for x in reordered_data]
+#     # Reorder seq_list using the same indices
+#     reordered_seq = [seq_list[i] for i in indices]
+    
+#     return reordered_data, reordered_seq
+
 def reorder_reads(data, seq_list):
+    # Check if all elements in data start with 'ref', 'read1_', or 'read2_' and have valid suffixes
+    valid_suffixes = ['start', 'inbetween', 'end', 'None']
+    all_valid = all(
+        x.startswith(('ref', 'read1_', 'read2_')) and 
+        (x == 'ref' or x.split('_')[1] in valid_suffixes)
+        for x in data
+    )
+    
+    if not all_valid:
+        return data, seq_list
+    
     ref = [x for x in data if x == 'ref']
-    read1 = sorted([x for x in data if x.startswith('read1_')], key=lambda x: ['start', 'inbetween', 'end', 'None'].index(x.split('_')[1]))
-    r2_seq = sorted([x for x in data if x.startswith('read2_')], key=lambda x: ['start', 'inbetween', 'end', 'None'].index(x.split('_')[1]))
-    reordered_data = ref + read1 + r2_seq
+    read1 = sorted([x for x in data if x.startswith('read1_')], 
+                  key=lambda x: valid_suffixes.index(x.split('_')[1]))
+    read2 = sorted([x for x in data if x.startswith('read2_')], 
+                  key=lambda x: valid_suffixes.index(x.split('_')[1]))
+    reordered_data = ref + read1 + read2
     
     # Get indices of reordered data in original data
     indices = [data.index(x) for x in reordered_data]
@@ -351,57 +534,66 @@ def process_query(index,
         except KeyError:
             pass
     
-    # --- FASTQC: check raw read
-    print(f"Run FASTQ: {index}")
-    fq = extract_pair_fastq(query_id, read1_path, read2_path)
-    
-    seq_list = [ref,
-                fq.r1_phred, fq.r1_seq,
-                fq.r2_seq_rev, fq.r2_phred_rev]
-    
-    belt_viz.plot_base_grid(
-        seq_list,
-        x_labels=[0, 1, 20, 73, 84, 99, 186, 223, 250],
-        y_labels=['ref', 'r1_phred', 'r1_seq', 'r2_seq_rev', 'r2_phred_rev'],
-        height=3,
-        width=36,
-        fig_dir=fig_dir,
-        fig_name=f"{sample}_{index}",
-        plot_title=f"{sample}_{index}",
-        fsize=6,
-        artificial=True)
-    
     # --- BAM: check mapping
     print(f'Run BAM: {index}')
-    seq_list, cigar_list, name_list = extract_bam(query_id,
-                                                       bam_path)
+    bam_seq_list = []
+    bam_name_list = []
+    x_labels = [0, 1, 20, 73, 84, 99, 186, 223, 250, 255]
+    bam_seq_list, bam_cigar_list, bam_name_list = extract_bam(query_id,
+                                                  bam_path)
     
     # re-order start-inbetween-end
-    name_list, seq_list = reorder_reads(name_list, seq_list)
-    
-    seq_list.insert(0, ref)
-    name_list.insert(0, 'ref')
-    # add number in cigar_list:
+    bam_name_list, bam_seq_list = reorder_reads(bam_name_list, bam_seq_list)
     numbers = []
-    for item in cigar_list:
+    for item in bam_cigar_list:
         if item is not None:  # Skip None values
             found_numbers = re.findall(r'\d+', item)
             numbers.extend(int(num) for num in found_numbers)
     
-    x_labels = sorted(list(set(numbers + [0, 1, 20, 73, 84, 99, 186, 223, 250])))
+    x_labels = sorted(list(set(numbers + x_labels)))
     
+    # --- FASTQC: check raw read
+    print(f"Run FASTQ: {index}")
+    fq = extract_pair_fastq(query_id, read1_path, read2_path)
+
+    r1_phred = fq.r1_phred
+    r1_seq = fq.r1_seq
+    r2_seq_rev = fq.r2_seq_rev
+    r2_phred_rev = fq.r2_phred_rev
     
+    # --- ALIGNMENTS:
+    pair = process_pair_reads(ref, [(r1_seq, r1_phred),(r2_seq_rev,r2_phred_rev)])
+
+
+    # --- plots
+    section = '-'*len(ref)
+    seq_list = bam_seq_list + [section, ref,
+                               r1_phred, r1_seq, r2_seq_rev, r2_phred_rev,
+                               section,
+                               pair.r1_phred_align, pair.r1_seq_align, pair.r2_seq_align, pair.r2_phred_align,
+                               section,
+                               ref,
+                               pair.css_seq,
+                               pair.css_phred]
+
+    ylabels= bam_name_list + ['',
+             'ref', 'phred_r1', 'seq_r1', 'rev_seq_r2', 'phred_rev_r2',
+             '',
+             'align_phred_r1', 'align_r1', 'align_r2', 'aling_phred_r2',
+             '',
+             'ref',
+             'seq_consensus','phred_consensus']
     
-    
+    # --- plot
     belt_viz.plot_base_grid(
         seq_list,
         x_labels=x_labels,
-        y_labels=name_list,
+        y_labels=ylabels,
         height=3,
-        width=36,
+        width=30,
         fig_dir=fig_dir,
-        fig_name=f"{sample}_{index}_mapping",
-        plot_title=f"{sample}_{index}_mapping",
+        fig_name=f"{sample}_{index}_align_combine",
+        plot_title=f"{sample}_{index}_align_combine",
         fsize=6,
         artificial=True
     )
