@@ -8,6 +8,7 @@ update: 2025
     - juli 15: cigar_recover (checking docstring)
     - juli 21: add phred as list into seq_list in plot_base_grid
     - juli 23: move cigar_recover to func 
+    - juli 28: add lower case option
 """
 
 import os
@@ -29,7 +30,8 @@ def plot_base_grid(seq_list: list,
                    x_lab: str = "Position",
                    y_lab: str = "Sequence",
                    fsize: float = 12,
-                   artificial=False
+                   artificial=False,
+                   uppercase: bool = False
                    ):
     """
     plot the headmap-style of list of DNA sequences
@@ -70,7 +72,12 @@ def plot_base_grid(seq_list: list,
     y_lab : str, optional
         label for the y-axis
     
-    fsize : size of text
+    fsize : 
+        size of text
+    artificial : 
+        If True, pad shorter sequences with 'X' to match longest sequence.
+    uppercase : 
+        If True, convert sequences to uppercase; otherwise keep original case.
 
     Returns
     -------
@@ -110,17 +117,17 @@ def plot_base_grid(seq_list: list,
     # convert sequences to uppercase character lists
     #seq_list_bases = [list(seq.upper()) for seq in seq_list]
     seq_list_bases = [
-        list(seq.upper()) if isinstance(seq, str) else 
-        [str(base).upper() for base in seq] if isinstance(seq, list) else 
-        [str(base) for base in seq]
+        list(seq.upper() if uppercase else seq) if isinstance(seq, str) else 
+        [str(base).upper() if uppercase else str(base) for base in seq] if isinstance(seq, list) else 
+        [str(base).upper() if uppercase else str(base) for base in seq]
         for seq in seq_list
     ]
     
     if colors is None:
-        colors = {'A': '#FF9999', 'a': '#FF6666',
-                  'T': '#99FF99', 't': '#66FF66',
-                  'C': '#9999FF', 'c': '#6666FF',
-                  'G': '#FFFF99', 'g': '#FFFF66',
+        colors = {'A': '#FF9999', 'a': '#FFCCCC',
+                  'T': '#99FF99', 't': '#CCFFCC',
+                  'C': '#9999FF', 'c': '#CCCCFF',
+                  'G': '#FFFF99', 'g': '#FFFFCC',
                   '-': '#FFFFFF',
                   'N': '#A0A0A0', 'n': '#808080',
                   '×': '#1C2526', 'X': '#0E1213'

@@ -56,7 +56,7 @@ def hamming(ref_seq: str,
     if len(ref_seq) != len(comp_seq):
         raise ValueError("Sequences must have equal length for Hamming distance")
     
-    valid_nucleotides = set('ACGTN')
+    valid_nucleotides = set('ACGTNQ-')
     if not (set(ref_seq).issubset(valid_nucleotides) and set(comp_seq).issubset(valid_nucleotides)):
         raise ValueError("Sequences must contain only A, C, G, T, or N")
     
