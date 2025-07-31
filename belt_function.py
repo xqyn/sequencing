@@ -16,7 +16,9 @@ update:
             copy `align_pairwise` from trace_barcode.py
             write out `process_pair_reads` for generate consensus read
     - juli 28: add local align for sp
-    - juki 30: add barcode search
+    - juli 30: add barcode search
+    - juli 31: add generate_consensus, decide on better base and score
+            update adjust_sequence for position zero
 note: combine trace_barcode and align_motif
 ''' 
 
@@ -48,7 +50,9 @@ import logging
 import belt_viz
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
 # dna general --------------------------------------------------
@@ -420,20 +424,74 @@ def align_pairwise(ref: str,
         return aligner_all
 
 
+# def adjust_sequence(ref: str, 
+#                     seq: str, 
+#                     seq_phred: List[int], 
+#                     ref_start: int = 0, 
+#                     seq_start: int = 0, 
+#                     shift: Optional[int] = None, 
+#                     compensate: bool = False) -> Tuple[str, List[int]]:
+#     """
+#     Adjusts a sequence and its Phred scores by shifting and/or compensating length.
+    
+#     Args:
+#         ref (str): Reference sequence.
+#         seq (str): Input sequence to adjust.
+#         seq_phred (list): Phred scores corresponding to seq.
+#         ref_start (int, optional): Reference sequence start index. Defaults to 0.
+#         seq_start (int, optional): Input sequence start index. Defaults to 0.
+#         compensate (bool, optional): If True, adjusts seq length to match ref. Defaults to False.
+    
+#     Returns:
+#         tuple: Adjusted (sequence, Phred scores).
+    
+#     Raises:
+#         ValueError: If seq and seq_phred lengths do not match.
+#     """
+#     if len(seq) != len(seq_phred):
+#         raise ValueError("Sequence and Phred scores must have equal length")
+    
+#     # Use provided shift or calculate from seq_start - ref_start
+#     shift = shift if shift is not None else seq_start - ref_start
+    
+#     # apply shift
+#     if shift != 0:
+#         if shift > 0:
+#             seq = seq[shift:]
+#             seq_phred = seq_phred[shift:]
+#         else:
+#             seq = ref[:abs(shift)].lower() + seq
+#             seq_phred = [0] * abs(shift) + seq_phred
+    
+#     # Apply compensation if requested
+#     if compensate:
+#         len_diff = len(seq) - len(ref)
+#         if len_diff > 0:
+#             seq = seq[:len(ref)]
+#             seq_phred = seq_phred[:len(ref)]
+#         elif len_diff < 0:
+#             seq += ref[-abs(len_diff):].lower()
+#             seq_phred += [0] * abs(len_diff)
+    
+#     return seq, seq_phred
+
+
 def adjust_sequence(ref: str, 
                     seq: str, 
                     seq_phred: List[int], 
-                    shift: int = 0, 
+                    pos_motif_ref: int = 0,
+                    pos_align_seq: int = 0, 
+                    shift: Optional[int] = None, 
                     compensate: bool = False) -> Tuple[str, List[int]]:
     """
-    # note: check docstring
     Adjusts a sequence and its Phred scores by shifting and/or compensating length.
     
     Args:
         ref (str): Reference sequence.
         seq (str): Input sequence to adjust.
         seq_phred (list): Phred scores corresponding to seq.
-        shift (int, optional): Number of bases to shift. Positive trims start, negative adds from ref. Defaults to 0.
+        ref_start (int, optional): Reference sequence start index. Defaults to 0.
+        seq_start (int, optional): Input sequence start index. Defaults to 0.
         compensate (bool, optional): If True, adjusts seq length to match ref. Defaults to False.
     
     Returns:
@@ -441,18 +499,47 @@ def adjust_sequence(ref: str,
     
     Raises:
         ValueError: If seq and seq_phred lengths do not match.
+    Describe:
+        [pos]: the position of start
+        shift: the different in two seq
+        ×××××: motif
+        [=====]: barcode/spacer of target
+        
+        pos_motif_ref = 0
+        shift > 0
+            ref: |------------------------------------------|
+            seq: |shift-------------------------------------|
+        shift < 0
+            ref: |     -------------------------------------|
+            seq: |shift-------------------------------------|
+        pos_motif_ref > 0 (abbrx. pos)
+        shift > 0
+            ref: |----------[pos]×××××[=====]---------------|
+            seq: |----------shift[pos]×××××[=====]----------|
+        shift < 0
+            ref: |----------[pos]×××××[=====]---------------|
+            seq: |-----shift[pos]×××××[=====]---------------|
     """
     if len(seq) != len(seq_phred):
         raise ValueError("Sequence and Phred scores must have equal length")
     
-    # Apply shift
-    if shift > 0:
-        seq = seq[shift:]
-        seq_phred = seq_phred[shift:]
-    elif shift < 0:
-        seq = ref[:abs(shift)].lower() + seq
-        seq_phred = [0] * abs(shift) + seq_phred
+    # Use provided shift or calculate from seq_start - ref_start
+    shift = shift if shift is not None else pos_align_seq - pos_motif_ref
+    pos_align_seq = pos_motif_ref+shift
     
+    # apply shift
+    if shift != 0:
+        if shift > 0:
+            seq = seq[:pos_motif_ref] + seq[pos_align_seq:]
+            seq_phred = seq_phred[:pos_motif_ref] + seq_phred[pos_align_seq:]
+        else:
+            if pos_motif_ref != 0:
+                seq = seq[:pos_align_seq] + ref[pos_align_seq:pos_motif_ref].lower() + seq[pos_align_seq:]
+                seq_phred = seq_phred[:pos_align_seq] + [0]*abs(shift) + seq_phred[pos_align_seq:]
+            else:
+                seq = ref[:abs(shift)].lower() + seq
+                seq_phred = [0]*abs(shift) + seq_phred
+                          
     # Apply compensation if requested
     if compensate:
         len_diff = len(seq) - len(ref)
@@ -466,12 +553,56 @@ def adjust_sequence(ref: str,
     return seq, seq_phred
 
 
-def process_pair_reads(ref: str, read_pairs: List[Tuple[str, List[int]]], query_id: str = 'test') -> Optional[ReadAlign]:
+def generate_consensus(r1_seq_align: str,
+                       r2_seq_align: str, 
+                       r1_phred_align: str, 
+                       r2_phred_align: str, 
+                       ref: str) -> tuple[str, str]:
+     
+    middle = round(len(r1_seq_align)/2) - 1
+    phred_r1_1st = sum(r1_phred_align[:middle]) / len(r1_phred_align[:middle])
+    phred_r2_1st = sum(r2_phred_align[:middle]) / len(r2_phred_align[:middle])
+    phred_r1_2nd = sum(r1_phred_align[middle:]) / len(r1_phred_align[middle:])
+    phred_r2_2nd = sum(r2_phred_align[middle:]) / len(r2_phred_align[middle:])
+    
+    css_seq, css_phred = [], []
+    for ind, (r1_score, r2_score) in enumerate(zip(r1_phred_align, r2_phred_align)):
+        r1_base, r2_base = r1_seq_align[ind], r2_seq_align[ind]            
+        if r1_score != r2_score:
+            base, score = (r1_base, r1_score) if r1_score > r2_score else (r2_base, r2_score)
+        else:
+            # Equal scores — resolve by base match or context
+            base = (
+                r1_base if r1_base == r2_base or r1_base == ref[ind] else
+                r2_base if r2_base == ref[ind] else
+                (
+                    r1_base if (ind < middle and phred_r1_1st > phred_r2_1st) or 
+                    (ind > middle and phred_r1_2nd > phred_r2_2nd) else
+                    r2_base if (ind < middle and phred_r1_1st < phred_r2_1st) or 
+                    (ind > middle and phred_r1_2nd < phred_r2_2nd) else
+                    'Q')
+            )
+            score = r1_score if base == r1_base else r2_score if base == r2_base else 0
+        
+        css_seq.append(base)
+        css_phred.append(score)
+    
+    return ''.join(css_seq), css_phred
+
+# css_seq, css_phred = generate_consensus(r1_seq_align,
+#                                                 r2_seq_align,
+#                                                 r1_phred_align,
+#                                                 r2_phred_align,
+#                                                 ref)
+
+def process_pair_reads(ref: str, 
+                       read_pairs: List[Tuple[str, List[int]]], 
+                       query_id: str = 'test') -> Optional[ReadAlign]:
     try:
         r1_seq_align, r1_phred_align, r2_seq_align, r2_phred_align = None, None, None, None
         # Process each read pair
         for pair_idx, (seq, seq_phred) in enumerate(read_pairs, 1):
-            print(f"Processing read pair {pair_idx}...")
+            #print(f"Processing read pair {pair_idx}...")
             
             # step 1: initial alignment and check for sequencing shift
             aligner = align_pairwise(ref, seq, mode='global')
@@ -513,12 +644,10 @@ def process_pair_reads(ref: str, read_pairs: List[Tuple[str, List[int]]], query_
                 
             # store results for this read pair
             if pair_idx == 1:
-                print(f"Processing read pair 1...")
                 r1_seq_align, r1_phred_align = seq, seq_phred
                 if len(r1_seq_align) != len(r1_phred_align):
                     raise ValueError(f"Length mismatch for read 1: sequence length {len(r1_seq_align)} != PHRED length {len(r1_phred_align)}")
             else:
-                print(f"Processing read pair 2...")
                 r2_seq_align, r2_phred_align = seq, seq_phred
                 if len(r2_seq_align) != len(r2_phred_align):
                     raise ValueError(f"Length mismatch for read 2: sequence length {len(r2_seq_align)} != PHRED length {len(r2_phred_align)}")
@@ -526,30 +655,17 @@ def process_pair_reads(ref: str, read_pairs: List[Tuple[str, List[int]]], query_
         
         # step 5: generate consensus sequence and Phred scores
         logger.info("Generating consensus sequence...")
-        css_seq = []
-        css_phred = []
-        for ind, (r1_base_score, r2_base_score) in enumerate(zip(r1_phred_align, r2_phred_align)):
-            mean = int((r1_base_score + r2_base_score) / 2)
-            r1_base, r2_base = r1_seq_align[ind], r2_seq_align[ind]
-            
-            if r1_base_score > r2_base_score:
-                base = r1_base
-            elif r2_base_score > r1_base_score:
-                base = r2_base
-            else:
-                base = (r1_base if r1_base == r2_base or r1_base == ref[ind] else
-                        r2_base if r2_base == ref[ind] else 'Q')
-            
-            css_seq.append(base)
-            css_phred.append(mean if base != 'Q' else 0)
-        
-        # Return results as a single object
+        css_seq, css_phred = generate_consensus(r1_seq_align,
+                                                r2_seq_align,
+                                                r1_phred_align,
+                                                r2_phred_align,
+                                                ref)
         
         return ReadAlign(r1_seq_align, 
                         r1_phred_align, 
                         r2_seq_align, 
                         r2_phred_align, 
-                        ''.join(css_seq), 
+                        css_seq, 
                         css_phred)
     except Exception as e:
             logger.error(f"Error processing query {query_id}: {str(e)}")
@@ -568,7 +684,9 @@ def process_query(index: int,
                   ref: str,
                   motif_sp_down: str = 'CGGGGTTAGA',
                   motif_sp_down_pos: int = 100,
-                  shift_base: int = 10,
+                  motif_bp_up: str  = 'GCTTTTTTTT',
+                  motif_bp_up_pos: int = 176,
+                  shift_base: int = 3,
                   sample: str = 'test',
                   fig_dir: str = './figure/test/'
                   ) -> None:
@@ -613,7 +731,7 @@ def process_query(index: int,
     # --- BAM: check mapping
     x_labels = [0, 1, 20, 73, 84, 99, 100, 120, 130, 140, 150, 160, 170, 177, 186, 223, 224, 250, 255]
     bam_seq_list, bam_name_list, numbers = [], [], []
-    logger.info(f"Processing bam file...")
+    logger.info(f"Processing BAM file...")
     bam_seq_list, bam_cigar_list, bam_name_list = extract_bam(query_id, bam_path)
     # re-order start-inbetween-end
     bam_name_list, bam_seq_list = reorder_reads(bam_name_list, bam_seq_list)
@@ -627,7 +745,6 @@ def process_query(index: int,
     x_labels = sorted(list(set(numbers + x_labels)))
     
     # --- FASTQC: check raw read
-      
     logger.info(f"Processing FASTQC file...")
     fq = extract_pair_fastq(query_id, read1_path, read2_path)
     if not fq:
@@ -644,7 +761,7 @@ def process_query(index: int,
     r1_seq_sp, r1_phred_sp = r1_seq, r1_phred
     motif_align = align_pairwise(r1_seq_sp, motif_sp_down, mode='local')
     shift_r1 = motif_align.indices[0][0] - motif_sp_down_pos
-
+    
     if abs(shift_r1) > 80:
         logger.warning(f"Huge shift {shift_r1} in Read 1, skipping index {index}")
         return
@@ -658,8 +775,8 @@ def process_query(index: int,
                                                      fq_full.r1_seq, 
                                                      fq_full.r1_phred, 
                                                      shift=shift_r1, 
-                                                     compensate=False)
-
+                                                     compensate=True)
+    
     # read 2 
     r2_seq_rev_sp, r2_phred_rev_sp = r2_seq_rev, r2_phred_rev
     motif_align = align_pairwise(r2_seq_rev_sp, motif_sp_down, mode='local')
@@ -678,77 +795,39 @@ def process_query(index: int,
                                                              fq_full.r2_seq_rev, 
                                                              fq_full.r2_phred_rev, 
                                                              shift=shift_r2 + 38, 
-                                                             compensate=False)
- 
-    # ---barcode 
-    motif_bp_up = 'GCTTTTTTTT'
-    motif_bp_up_pos = 176
+                                                             compensate=True)
     
+    # --- barcode 
     # read 1
-    seq = r1_seq_sp
-    seq_phred = r1_phred_sp
-    r1_seq_bc, r1_phred_bc = seq, seq_phred
-    
-    motif_align = align_pairwise(seq, motif_bp_up, mode='local')
-    shift_bp_r1 = motif_align.indices[0][0] - motif_bp_up_pos
-    pos = motif_align.indices[0][0]
-    
-    if shift_bp_r1 < 0:
-        #seq = seq[:pos] + '-'*abs(shift_bp_r1) + seq[pos:]
-        seq = seq[:pos] + ref[pos:pos+abs(shift_bp_r1)].lower() + seq[pos:]
-        seq_phred = seq_phred[:pos] + [0]*abs(shift_bp_r1) + seq_phred[pos:]
-    
-    if shift_bp_r1 > 0:
-        seq = seq[:motif_bp_up_pos] + seq[pos:]
-        seq_phred = seq_phred[:motif_bp_up_pos] + seq_phred[pos:]
-    
-    r1_seq_bc, r1_phred_bc = seq, seq_phred
+    motif_align = align_pairwise(r1_seq_sp, motif_bp_up, mode='local')
+    r1_seq_bc, r1_phred_bc = adjust_sequence(ref=ref,
+                                             seq=r1_seq_sp, 
+                                             seq_phred=r1_phred_sp,
+                                             pos_motif_ref=motif_bp_up_pos,
+                                             pos_align_seq=motif_align.indices[0][0],
+                                             compensate=True)
     
     # read 2
-    seq = r2_seq_rev_sp
-    seq_phred = r2_phred_rev_sp
-    r2_seq_rev_bc, r2_phred_rev_bc = seq, seq_phred
-    
-    motif_align = align_pairwise(seq, motif_bp_up, mode='local')
-    shift_bp_r2 = motif_align.indices[0][0] - motif_bp_up_pos
-    pos = motif_align.indices[0][0]
-
-    if shift_bp_r2 < 0:
-        seq = seq[:pos] + ref[pos:pos+abs(shift_bp_r2)].lower() + seq[pos:]
-        seq_phred = seq_phred[:pos] + [0]*abs(shift_bp_r2) + seq_phred[pos:]
-
-    if shift_bp_r2 > 0:
-        seq = seq[:motif_bp_up_pos] + seq[pos:]
-        seq_phred = seq_phred[:motif_bp_up_pos] + seq_phred[pos:]
-
-    r2_seq_rev_bc, r2_phred_rev_bc = seq, seq_phred
-
-    # fixing lenght
-    r1_seq_bc, r1_phred_bc = adjust_sequence(ref,
-                                             r1_seq_bc,
-                                             r1_phred_bc,
-                                             shift=0, 
+    motif_align = align_pairwise(r2_seq_rev_sp, motif_bp_up, mode='local')
+    r2_seq_rev_bc, r2_phred_rev_bc = adjust_sequence(ref=ref,
+                                             seq=r2_seq_rev_sp, 
+                                             seq_phred=r2_phred_rev_sp,
+                                             pos_motif_ref=motif_bp_up_pos,
+                                             pos_align_seq=motif_align.indices[0][0],
                                              compensate=True)
 
-
-    r2_seq_rev_bc, r2_phred_rev_bc = adjust_sequence(ref, 
-                                                     r2_seq_rev_bc, 
-                                                     r2_phred_rev_bc,
-                                                     shift=0, 
-                                                     compensate=True)
     # ---final
-    r1_seq, r1_phred, r2_seq_rev, r2_phred_rev = r1_seq_bc, r1_phred_bc, r2_seq_rev_bc, r2_phred_rev_bc
-    logger.info(f"Run process_pair_reads: {index} : {query_id}")
-    pair = process_pair_reads(ref, [(r1_seq, r1_phred), (r2_seq_rev,r2_phred_rev)], query_id)
+    logger.info(f"Processing pair reads...")
+    pair = process_pair_reads(ref, 
+                              [(r1_seq_bc, r1_phred_bc), (r2_seq_rev_bc,r2_phred_rev_bc)], 
+                              query_id)
     
     
     # --- plots
-    logger.info(f"Plotting: {index} : {query_id}")
+    logger.info(f"Plotting {index}...")
     section = '-'*len(ref)
     seq_list = bam_seq_list + [section, ref,
                                fq.r1_phred, fq.r1_seq, fq.r2_seq_rev, fq.r2_phred_rev,
-                               section, ref,
-                               r1_phred, r1_seq, r2_seq_rev, r2_phred_rev,
                                section, ref,
                                r1_phred_sp, r1_seq_sp, r2_seq_rev_sp, r2_phred_rev_sp, 
                                section, ref, 
@@ -760,8 +839,6 @@ def process_query(index: int,
     
     y_labels= bam_name_list + ['', 'ref', 
                               '255_phred_r1', '255_seq_r1', '255_rev_seq_r2', '255_phred_rev_r2',
-                              '', 'ref', 
-                              'phred_r1', 'seq_r1', 'rev_seq_r2', 'phred_rev_r2',
                               '','ref', 
                               'r1_phred_sp', 'r1_seq_sp', 'r2_seq_rev_sp',  'r2_phred_rev_sp', 
                               '','ref', 
@@ -789,10 +866,6 @@ def process_query(index: int,
 
 
 # ---multiprocessing
-import multiprocessing as mp
-from functools import partial
-
-
 def process_queries(index_query_pairs,
                     read1_path,
                     read2_path, 
@@ -802,6 +875,8 @@ def process_queries(index_query_pairs,
                     ref,
                     motif_sp_down = 'CGGGGTTAGA',
                     motif_sp_down_pos = 100,
+                    motif_bp_up = 'GCTTTTTTTT',
+                    motif_bp_up_pos = 176,
                     shift_base=10,
                     sample='test', 
                     fig_dir='./figure/test/',
@@ -837,6 +912,8 @@ def process_queries(index_query_pairs,
         ref=ref,
         motif_sp_down = motif_sp_down,
         motif_sp_down_pos = motif_sp_down_pos,
+        motif_bp_up = motif_bp_up,
+        motif_bp_up_pos = motif_bp_up_pos,
         shift_base=shift_base,
         sample=sample,
         fig_dir=fig_dir
