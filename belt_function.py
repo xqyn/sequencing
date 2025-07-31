@@ -16,6 +16,7 @@ update:
             copy `align_pairwise` from trace_barcode.py
             write out `process_pair_reads` for generate consensus read
     - juli 28: add local align for sp
+    - juki 30: add barcode search
 note: combine trace_barcode and align_motif
 ''' 
 
@@ -565,8 +566,8 @@ def process_query(index: int,
                   read2_full_path: str,
                   bam_path: str,
                   ref: str,
-                  motif: str = 'CGGGGTTAGA',
-                  expected_pos: int = 100,
+                  motif_sp_down: str = 'CGGGGTTAGA',
+                  motif_sp_down_pos: int = 100,
                   shift_base: int = 10,
                   sample: str = 'test',
                   fig_dir: str = './figure/test/'
@@ -584,7 +585,7 @@ def process_query(index: int,
         bam_path: Path to BAM file.
         ref: Reference sequence.
         motif: Motif sequence for alignment check.
-        expected_pos: Expected position of motif.
+        motif_sp_down_pos: Expected position of motif.
         shift_base: Maximum allowed shift before correction.
         sample: Sample name for output files.
         fig_dir: Directory for output figures.
@@ -612,17 +613,17 @@ def process_query(index: int,
     # --- BAM: check mapping
     x_labels = [0, 1, 20, 73, 84, 99, 100, 120, 130, 140, 150, 160, 170, 177, 186, 223, 224, 250, 255]
     bam_seq_list, bam_name_list, numbers = [], [], []
-    # logger.info(f"Processing bam file...")
-    # bam_seq_list, bam_cigar_list, bam_name_list = extract_bam(query_id, bam_path)
-    # # re-order start-inbetween-end
-    # bam_name_list, bam_seq_list = reorder_reads(bam_name_list, bam_seq_list)
-    # # find the number in bam for easier to follow and add xlabels
-    # numbers = [int(num) for item in bam_cigar_list if item for num in re.findall(r'\d+', item)]
+    logger.info(f"Processing bam file...")
+    bam_seq_list, bam_cigar_list, bam_name_list = extract_bam(query_id, bam_path)
+    # re-order start-inbetween-end
+    bam_name_list, bam_seq_list = reorder_reads(bam_name_list, bam_seq_list)
+    # find the number in bam for easier to follow and add xlabels
+    numbers = [int(num) for item in bam_cigar_list if item for num in re.findall(r'\d+', item)]
     
-    # # for item in bam_cigar_list:
-    # #     if item is not None:  # Skip None values
-    # #         found_numbers = re.findall(r'\d+', item)
-    # #         numbers.extend(int(num) for num in found_numbers)
+    # for item in bam_cigar_list:
+    #     if item is not None:  # Skip None values
+    #         found_numbers = re.findall(r'\d+', item)
+    #         numbers.extend(int(num) for num in found_numbers)
     x_labels = sorted(list(set(numbers + x_labels)))
     
     # --- FASTQC: check raw read
@@ -637,11 +638,13 @@ def process_query(index: int,
     r2_seq_rev, r2_phred_rev = fq.r2_seq_rev, fq.r2_phred_rev
     
     # --- ALIGNMENTS:
+    # -- spacer
     # check if the read have hugh shift
     # read 1 
-    motif_align = align_pairwise(r1_seq, motif, mode='local')
-    shift_r1 = motif_align.indices[0][0] - expected_pos
-    
+    r1_seq_sp, r1_phred_sp = r1_seq, r1_phred
+    motif_align = align_pairwise(r1_seq_sp, motif_sp_down, mode='local')
+    shift_r1 = motif_align.indices[0][0] - motif_sp_down_pos
+
     if abs(shift_r1) > 80:
         logger.warning(f"Huge shift {shift_r1} in Read 1, skipping index {index}")
         return
@@ -651,11 +654,16 @@ def process_query(index: int,
         logger.info(f"Processing FASTQC finalizing...")
         if fq_full:
             logger.info(f"Adjusting new sequence...")
-            r1_seq, r1_phred = adjust_sequence(ref, fq_full.r1_seq, fq_full.r1_phred, shift=shift_r1, compensate=True)
+            r1_seq_sp, r1_phred_sp = adjust_sequence(ref, 
+                                                     fq_full.r1_seq, 
+                                                     fq_full.r1_phred, 
+                                                     shift=shift_r1, 
+                                                     compensate=False)
 
     # read 2 
-    motif_align = align_pairwise(r2_seq_rev, motif, mode='local')
-    shift_r2 = motif_align.indices[0][0] - expected_pos
+    r2_seq_rev_sp, r2_phred_rev_sp = r2_seq_rev, r2_phred_rev
+    motif_align = align_pairwise(r2_seq_rev_sp, motif_sp_down, mode='local')
+    shift_r2 = motif_align.indices[0][0] - motif_sp_down_pos
     
     if abs(shift_r2) > 80:
         logger.warning(f"Huge shift {shift_r2} in Read 2, skipping index {index}")
@@ -666,9 +674,70 @@ def process_query(index: int,
         logger.info(f"Processing FASTQC finalizing...")
         if fq_full:
             logger.info(f"Adjusting new sequence...")
-            r2_seq_rev, r2_phred_rev = adjust_sequence(ref, fq_full.r2_seq_rev, fq_full.r2_phred_rev, shift=shift_r2 + 38, compensate=True)
+            r2_seq_rev_sp, r2_phred_rev_sp = adjust_sequence(ref, 
+                                                             fq_full.r2_seq_rev, 
+                                                             fq_full.r2_phred_rev, 
+                                                             shift=shift_r2 + 38, 
+                                                             compensate=False)
  
- 
+    # ---barcode 
+    motif_bp_up = 'GCTTTTTTTT'
+    motif_bp_up_pos = 176
+    
+    # read 1
+    seq = r1_seq_sp
+    seq_phred = r1_phred_sp
+    r1_seq_bc, r1_phred_bc = seq, seq_phred
+    
+    motif_align = align_pairwise(seq, motif_bp_up, mode='local')
+    shift_bp_r1 = motif_align.indices[0][0] - motif_bp_up_pos
+    pos = motif_align.indices[0][0]
+    
+    if shift_bp_r1 < 0:
+        #seq = seq[:pos] + '-'*abs(shift_bp_r1) + seq[pos:]
+        seq = seq[:pos] + ref[pos:pos+abs(shift_bp_r1)].lower() + seq[pos:]
+        seq_phred = seq_phred[:pos] + [0]*abs(shift_bp_r1) + seq_phred[pos:]
+    
+    if shift_bp_r1 > 0:
+        seq = seq[:motif_bp_up_pos] + seq[pos:]
+        seq_phred = seq_phred[:motif_bp_up_pos] + seq_phred[pos:]
+    
+    r1_seq_bc, r1_phred_bc = seq, seq_phred
+    
+    # read 2
+    seq = r2_seq_rev_sp
+    seq_phred = r2_phred_rev_sp
+    r2_seq_rev_bc, r2_phred_rev_bc = seq, seq_phred
+    
+    motif_align = align_pairwise(seq, motif_bp_up, mode='local')
+    shift_bp_r2 = motif_align.indices[0][0] - motif_bp_up_pos
+    pos = motif_align.indices[0][0]
+
+    if shift_bp_r2 < 0:
+        seq = seq[:pos] + ref[pos:pos+abs(shift_bp_r2)].lower() + seq[pos:]
+        seq_phred = seq_phred[:pos] + [0]*abs(shift_bp_r2) + seq_phred[pos:]
+
+    if shift_bp_r2 > 0:
+        seq = seq[:motif_bp_up_pos] + seq[pos:]
+        seq_phred = seq_phred[:motif_bp_up_pos] + seq_phred[pos:]
+
+    r2_seq_rev_bc, r2_phred_rev_bc = seq, seq_phred
+
+    # fixing lenght
+    r1_seq_bc, r1_phred_bc = adjust_sequence(ref,
+                                             r1_seq_bc,
+                                             r1_phred_bc,
+                                             shift=0, 
+                                             compensate=True)
+
+
+    r2_seq_rev_bc, r2_phred_rev_bc = adjust_sequence(ref, 
+                                                     r2_seq_rev_bc, 
+                                                     r2_phred_rev_bc,
+                                                     shift=0, 
+                                                     compensate=True)
+    # ---final
+    r1_seq, r1_phred, r2_seq_rev, r2_phred_rev = r1_seq_bc, r1_phred_bc, r2_seq_rev_bc, r2_phred_rev_bc
     logger.info(f"Run process_pair_reads: {index} : {query_id}")
     pair = process_pair_reads(ref, [(r1_seq, r1_phred), (r2_seq_rev,r2_phred_rev)], query_id)
     
@@ -681,6 +750,10 @@ def process_query(index: int,
                                section, ref,
                                r1_phred, r1_seq, r2_seq_rev, r2_phred_rev,
                                section, ref,
+                               r1_phred_sp, r1_seq_sp, r2_seq_rev_sp, r2_phred_rev_sp, 
+                               section, ref, 
+                               r1_phred_bc, r1_seq_bc, r2_seq_rev_bc, r2_phred_rev_bc,
+                               section, ref,
                                pair.r1_phred_align, pair.r1_seq_align, pair.r2_seq_align, pair.r2_phred_align,
                                section, ref,
                                pair.css_seq, pair.css_phred]
@@ -689,6 +762,10 @@ def process_query(index: int,
                               '255_phred_r1', '255_seq_r1', '255_rev_seq_r2', '255_phred_rev_r2',
                               '', 'ref', 
                               'phred_r1', 'seq_r1', 'rev_seq_r2', 'phred_rev_r2',
+                              '','ref', 
+                              'r1_phred_sp', 'r1_seq_sp', 'r2_seq_rev_sp',  'r2_phred_rev_sp', 
+                              '','ref', 
+                              'r1_phred_bc', 'r1_seq_bc', 'r2_seq_rev_bc', 'r2_phred_rev_bc',
                               '', 'ref',
                               'align_phred_r1', 'align_r1', 'align_r2', 'aling_phred_r2',
                               '', 'ref',
@@ -723,8 +800,8 @@ def process_queries(index_query_pairs,
                     read2_full_path,
                     bam_path,
                     ref,
-                    motif = 'CGGGGTTAGA',
-                    expected_pos = 100,
+                    motif_sp_down = 'CGGGGTTAGA',
+                    motif_sp_down_pos = 100,
                     shift_base=10,
                     sample='test', 
                     fig_dir='./figure/test/',
@@ -758,8 +835,8 @@ def process_queries(index_query_pairs,
         read2_full_path=read2_full_path,
         bam_path=bam_path,
         ref=ref,
-        motif = motif,
-        expected_pos = expected_pos,
+        motif_sp_down = motif_sp_down,
+        motif_sp_down_pos = motif_sp_down_pos,
         shift_base=shift_base,
         sample=sample,
         fig_dir=fig_dir
