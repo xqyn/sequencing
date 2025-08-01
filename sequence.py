@@ -19,8 +19,8 @@ def ascii_to_phred(quality_string, offset=33):
 
 def complement(seq, reverse=False):
     """Return the complement of a sequence"""
-    mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C',
-               'a': 't', 't': 'a', 'c': 'g', 'g': 'c'}
+    mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', '-':'-',
+               'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
     complemented = ''.join([mapping.get(base, base) for base in seq])
     return complemented[::-1] if reverse else complemented
 
