@@ -13,9 +13,10 @@ import gzip
 from typing import List, Tuple, Optional, NamedTuple, Iterator
 from itertools import islice
 from Bio import SeqIO
-from sequence import ascii_to_phred, phred_to_ascii, complement
+from dataclasses import dataclass
 
-# configure logging
+
+# --- configure logging --------------------------------------------------
 import logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -23,45 +24,55 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-# function ---
-def seq_lenght(fastq_list):
-    """Calculate the lengths of sequences"""
-    return [len(sequencing.seq) for sequencing in fastq_list]
-
-# def ascii_to_phred(quality_string, offset=33):
-#     """Convert an ASCII quality to Phred scores"""
-#     return [ord(char) - offset for char in quality_string]
+# --- helper --------------------------------------------------
+def ascii_to_phred(quality_string, offset=33):
+    """Convert an ASCII quality to Phred scores"""
+    return [ord(char) - offset for char in quality_string]
 
 
-# class --------------------------------------------------
-class Fastq(NamedTuple):
+def phred_to_ascii(phred_scores: list) -> str:
+    """Convert integer PHRED scores to ASCII using PHRED+33 encoding."""
+    return ''.join(chr(q + 33) for q in phred_scores)
+
+
+def complement(seq, reverse=False):
+    """Return the complement of a sequence"""
+    mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', '-':'-',
+               'a': 't', 't': 'a', 'c': 'g', 'g': 'c', 'n': 'n'}
+    complemented = ''.join([mapping.get(base, base) for base in seq])
+    return complemented[::-1] if reverse else complemented
+
+
+# --- class --------------------------------------------------
+@dataclass(frozen=True)
+class Fastq:
     """
     Define a fastq class for storing FASTQ records.
     
     Attributes:
-        iden (str): Identifier of the sequence (e.g., read name).
-        seq (str): DNA sequence string.
-        qual (str): Quality string (ASCII-encoded scores).
-        phred (List[int]): List of Phred quality scores derived from qual.
-        length (int): Length of the sequence.
+        iden    (str): Identifier of the sequence (e.g., read name).
+        seq     (str): DNA sequence string.
+        qual    (str): Quality string (ASCII-encoded scores).
+        phred   (Optional[int]): List of Phred quality scores derived from qual.
+        length  (int): Length of the sequence.
     """
     iden:   str     # identifier
     seq:    str     # sequence
     qual:   str     # quality
-    phred:  List[int]     # phred quality score 
+    phred:  Optional[List[int]]
     length: int     # length of the sequence
         
 
-# SeqQuery --------------------------------------------------
+# --- SeqQuery --------------------------------------------------
 def SeqQuery(fastq_filename: str,
-             phred_offset: int = 33,
              phred: bool = True,
              lines: int = None) -> Iterator[Fastq]:
     """
+    Parse a FASTQ (or gzipped FASTQ) file and yield Fastq records.
     Args:
-        fastq_filename: The name of the fastq file.
-        phred_offset: Phred score offset for quality conversion (default: 33).
-        lines: Number of FASTQ records to yield (default: None, yields all records).
+        fastq_filename  (str)   : path to the FASTQ file (.fastq or .fastq.gz).
+        phred           (bool)  : whether to compute Phred scores (default: True).
+        lines           (int)   : number of FASTQ records to yield (default: None = all).
     
     Yields:
         fastq: A fastq object for each record.
@@ -69,35 +80,59 @@ def SeqQuery(fastq_filename: str,
     Raises:
         ValueError: If FASTQ records are incomplete or sequence/quality lengths differ.
     """
-    
-    fastq_list = []
     opener = gzip.open if fastq_filename.endswith('.gz') else open
-    with opener(fastq_filename, 'rt') as sequencing:
-        # Set iterator with optional limit using islice
-        seq_iterator = islice(sequencing, None) if lines is None else islice(sequencing, lines * 4)
+    
+    with opener(fastq_filename, 'rt') as fh:
+        records = zip(*[iter(fh)] * 4)
         
-        # seting objects for temp sequecing
-        temp_seq = [None, None, None, None]
-        for seq_num, line in enumerate(seq_iterator):
-            temp_seq[seq_num % 4] = line.strip()    # store line in temp_seq
-            if seq_num % 4 == 3:                    # for evey 4th line
-                if None in temp_seq:
-                    raise ValueError(f"Incomplete FASTQ record at line {seq_num - 2}")
-                if len(temp_seq[1]) != len(temp_seq[3]):
-                    raise ValueError(f"Sequence and quality lengths differ at record starting line {seq_num - 2}")
-                seq_record = Fastq(
-                    iden=temp_seq[0],
-                    seq=temp_seq[1],
-                    qual=temp_seq[3],
-                    phred=ascii_to_phred(temp_seq[3]) if phred else None,
-                    length=len(temp_seq[3])
+        for i, (header, seq, plus, qual) in enumerate(islice(records, lines)):
+            header = header.strip()
+            seq    = seq.strip()
+            plus   = plus.strip()
+            qual   = qual.strip()
+            
+            # 1. Header must start with '@'
+            if not header.startswith('@'):
+                raise ValueError(f"Record {i}: header must start with '@', got: {header!r}")
+            
+            # 2. Sequence must not be empty
+            if not seq:
+                raise ValueError(f"Record {i}: empty sequence for read '{header}'")
+            
+            # 3. '+' separator line must start with '+'
+            if not plus.startswith('+'):
+                raise ValueError(f"Record {i}: expected '+' separator, got: {plus!r}")
+            
+            # 4. Quality must not be empty
+            if not qual:
+                raise ValueError(f"Record {i}: empty quality string for read '{header}'")
+            
+            # 5. Sequence and quality lengths must match
+            if len(seq) != len(qual):
+                raise ValueError(
+                    f"Record {i}: sequence length ({len(seq)}) != "
+                    f"quality length ({len(qual)}) for read '{header}'"
                 )
-                yield seq_record
-    # Check for trailing incomplete records
-        if seq_num % 4 != 3:
-            remaining_lines = (seq_num + 1) % 4
-            if remaining_lines != 0:
-                raise ValueError(f"File ended with incomplete FASTQ record (lines: {seq_num + 1})")
+            
+            # 6. Quality scores must be in valid Phred+33 ASCII range (33–126)
+            if not all(33 <= ord(c) <= 126 for c in qual):
+                raise ValueError(f"Record {i}: quality string contains out-of-range ASCII for read '{header}'")
+            
+            yield Fastq(
+                iden=header,
+                seq=seq,
+                qual=qual,
+                phred=ascii_to_phred(qual) if phred else None,
+                length=len(seq)
+            )
+        
+        # 7. check for trailing incomplete record (truncated file)
+        leftover = list(islice(fh, 3))
+        if leftover:
+            raise ValueError(
+                f"File ended with an incomplete FASTQ record "
+                f"({len(leftover)} trailing line(s))"
+            )
 
 
 
@@ -112,7 +147,6 @@ class FastqPair(NamedTuple):
     r2_seq_rev: str         # Reverse complement of Read 2 sequence
     r2_phred_rev: List[int] # Reversed Read 2 Phred scores
     
-
 
 # --- based on query_id
 def read_id_fastq(read_id,

@@ -30,11 +30,6 @@ def complement(seq, reverse=False):
     return complemented[::-1] if reverse else complemented
 
 
-def rever_complement(seq):
-    """Return the reverse complement of a sequence"""
-    return complement(seq, reverse=True)
-
-
 # --- hamming_dist
 def hamming(ref_seq: str,
             comp_seq: str,
