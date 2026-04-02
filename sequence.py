@@ -17,6 +17,11 @@ def ascii_to_phred(quality_string, offset=33):
     return [ord(char) - offset for char in quality_string]
 
 
+def phred_to_ascii(phred_scores: list) -> str:
+    """Convert integer PHRED scores to ASCII using PHRED+33 encoding."""
+    return ''.join(chr(q + 33) for q in phred_scores)
+
+
 def complement(seq, reverse=False):
     """Return the complement of a sequence"""
     mapping = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', '-':'-',
