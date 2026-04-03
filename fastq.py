@@ -65,7 +65,7 @@ class Fastq:
 
 # --- SeqQuery --------------------------------------------------
 def SeqQuery(fastq_filename: str,
-             phred: bool = True,
+             phred: bool = False,
              lines: int = None) -> Iterator[Fastq]:
     """
     Parse a FASTQ (or gzipped FASTQ) file and yield Fastq records.
